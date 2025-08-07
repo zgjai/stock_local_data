@@ -62,33 +62,27 @@ class TechnicalIndicators:
             return None
     
     @staticmethod
-    def calculate_zhixing_long_short(close, high, low, volume) -> Tuple[float, float]:
+    def calculate_zhixing_long_short(close, high, low, volume, n1=3, n2=21) -> Tuple[float, float]:
         """
-        计算知行合一长短线指标（模拟实现）
+        计算知行合一长短线指标
+        短期:100*(C-LLV(L,N1))/(HHV(C,N1)-LLV(L,N1))
+        长期:100*(C-LLV(L,N2))/(HHV(C,N2)-LLV(L,N2))
         返回: (长线值, 短线值)
         """
         try:
+            llv_short = low.rolling(n1).min()
+            hhv_short = close.rolling(n1).max()
+            short_line = 100 * (close - llv_short) / (hhv_short - llv_short)
             
-            long_ma = close.rolling(window=60).mean()
-            price_position = (close - long_ma) / long_ma * 100
-            volume_ma = volume.rolling(window=20).mean()
-            volume_ratio = volume / volume_ma
+            llv_long = low.rolling(n2).min()
+            hhv_long = close.rolling(n2).max()
+            long_line = 100 * (close - llv_long) / (hhv_long - llv_long)
             
-            long_line = (price_position.iloc[-1] * 0.7 + 
-                        (volume_ratio.iloc[-1] - 1) * 30 * 0.3)
-            
-            short_ma = close.rolling(window=10).mean()
-            short_position = (close - short_ma) / short_ma * 100
-            volatility = (high - low) / close * 100
-            
-            short_line = (short_position.iloc[-1] * 0.6 + 
-                         volatility.iloc[-1] * 0.4)
-            
-            return float(long_line), float(short_line)
+            return float(long_line.iloc[-1]), float(short_line.iloc[-1])
             
         except Exception as e:
             print(f"知行合一长短线计算错误: {e}")
-            return random.uniform(-50, 50), random.uniform(-30, 30)
+            return 50.0, 50.0
     
     @staticmethod
     def calculate_zhixing_bull_bear(close, high, low, volume) -> Tuple[float, float]:
