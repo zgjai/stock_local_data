@@ -87,33 +87,22 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_zhixing_bull_bear(close, high, low, volume) -> Tuple[float, float]:
         """
-        计算知行合一多空线指标（模拟实现）
-        返回: (多头值, 空头值)
+        计算知行合一多空线指标（基于通达信公式）
+        白线: EMA(EMA(C,10),10) - 知行中期多空线
+        黄线: MA(CLOSE,60) - MA1
+        返回: (白线值, 黄线值)
         """
         try:
+            ema10 = close.ewm(span=10).mean()
+            white_line = ema10.ewm(span=10).mean()
             
-            price_change = close.pct_change()
-            up_days = (price_change > 0).rolling(window=20).sum()
-            avg_up_change = price_change[price_change > 0].rolling(window=20).mean()
+            yellow_line = close.rolling(window=60).mean()
             
-            down_days = (price_change < 0).rolling(window=20).sum()
-            avg_down_change = abs(price_change[price_change < 0]).rolling(window=20).mean()
-            
-            volume_trend = volume.rolling(window=10).mean() / volume.rolling(window=30).mean()
-            
-            bull_line = (up_days.iloc[-1] / 20 * 100 * 0.5 + 
-                        avg_up_change.iloc[-1] * 1000 * 0.3 +
-                        (volume_trend.iloc[-1] - 1) * 50 * 0.2)
-            
-            bear_line = (down_days.iloc[-1] / 20 * 100 * 0.5 + 
-                        avg_down_change.iloc[-1] * 1000 * 0.3 +
-                        (2 - volume_trend.iloc[-1]) * 50 * 0.2)
-            
-            return float(bull_line), float(bear_line)
+            return float(white_line.iloc[-1]), float(yellow_line.iloc[-1])
             
         except Exception as e:
             print(f"知行合一多空线计算错误: {e}")
-            return random.uniform(0, 100), random.uniform(0, 100)
+            return 50.0, 50.0
     
     @classmethod
     def calculate_all_indicators(cls, df):
