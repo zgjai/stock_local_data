@@ -37,7 +37,7 @@ class StockDatabase:
             logger.info(f"获取到 {len(stock_list)} 只股票")
             
             historical_data = self.data_fetcher.batch_get_historical_data(
-                stock_list[:100],  # 限制前100只股票进行测试
+                stock_list,
                 start_date_str, 
                 end_date_str,
                 batch_size=20
