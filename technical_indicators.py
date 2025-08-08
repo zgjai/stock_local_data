@@ -9,6 +9,13 @@ import random
 
 class TechnicalIndicators:
     @staticmethod
+    def _format_decimal(value, decimals=3):
+        """格式化小数位数，最多保留指定位数"""
+        if value is None or pd.isna(value):
+            return None
+        return round(float(value), decimals)
+    
+    @staticmethod
     def calculate_kdj(high, low, close, fastk_period=9, slowk_period=3, slowd_period=3):
         """计算KDJ指标"""
         try:
@@ -22,7 +29,12 @@ class TechnicalIndicators:
             
             j = 3 * k - 2 * d
             
-            return k, d, j
+            if len(k) > 0:
+                return (TechnicalIndicators._format_decimal(k.iloc[-1]),
+                        TechnicalIndicators._format_decimal(d.iloc[-1]),
+                        TechnicalIndicators._format_decimal(j.iloc[-1]))
+            else:
+                return k, d, j
         except Exception as e:
             print(f"KDJ计算错误: {e}")
             return None, None, None
@@ -36,7 +48,12 @@ class TechnicalIndicators:
             dif = ema12 - ema26
             dea = dif.ewm(span=signalperiod).mean()
             macd = (dif - dea) * 2
-            return dif, dea, macd
+            if len(dif) > 0:
+                return (TechnicalIndicators._format_decimal(dif.iloc[-1]),
+                        TechnicalIndicators._format_decimal(dea.iloc[-1]),
+                        TechnicalIndicators._format_decimal(macd.iloc[-1]))
+            else:
+                return dif, dea, macd
         except Exception as e:
             print(f"MACD计算错误: {e}")
             ema12 = close.ewm(span=fastperiod).mean()
@@ -44,7 +61,12 @@ class TechnicalIndicators:
             dif = ema12 - ema26
             dea = dif.ewm(span=signalperiod).mean()
             macd = (dif - dea) * 2
-            return dif, dea, macd
+            if len(dif) > 0:
+                return (TechnicalIndicators._format_decimal(dif.iloc[-1]),
+                        TechnicalIndicators._format_decimal(dea.iloc[-1]),
+                        TechnicalIndicators._format_decimal(macd.iloc[-1]))
+            else:
+                return dif, dea, macd
     
     @staticmethod
     def calculate_bbi(close, period1=3, period2=6, period3=12, period4=24):
@@ -56,7 +78,10 @@ class TechnicalIndicators:
             ma4 = close.rolling(window=period4).mean()
             
             bbi = (ma1 + ma2 + ma3 + ma4) / 4
-            return bbi
+            if len(bbi) > 0:
+                return TechnicalIndicators._format_decimal(bbi.iloc[-1])
+            else:
+                return bbi
         except Exception as e:
             print(f"BBI计算错误: {e}")
             return None
@@ -70,19 +95,26 @@ class TechnicalIndicators:
         返回: (长线值, 短线值)
         """
         try:
-            llv_short = low.rolling(n1).min()
-            hhv_short = close.rolling(n1).max()
+            effective_n1 = min(n1, len(close))
+            effective_n2 = min(n2, len(close))
+            
+            llv_short = low.rolling(effective_n1).min()
+            hhv_short = close.rolling(effective_n1).max()
             short_line = 100 * (close - llv_short) / (hhv_short - llv_short)
             
-            llv_long = low.rolling(n2).min()
-            hhv_long = close.rolling(n2).max()
+            llv_long = low.rolling(effective_n2).min()
+            hhv_long = close.rolling(effective_n2).max()
             long_line = 100 * (close - llv_long) / (hhv_long - llv_long)
             
-            return float(long_line.iloc[-1]), float(short_line.iloc[-1])
+            long_val = long_line.iloc[-1] if not pd.isna(long_line.iloc[-1]) else 50.0
+            short_val = short_line.iloc[-1] if not pd.isna(short_line.iloc[-1]) else 50.0
+            
+            return (TechnicalIndicators._format_decimal(long_val), 
+                    TechnicalIndicators._format_decimal(short_val))
             
         except Exception as e:
             print(f"知行合一长短线计算错误: {e}")
-            return 50.0, 50.0
+            return TechnicalIndicators._format_decimal(50.0), TechnicalIndicators._format_decimal(50.0)
     
     @staticmethod
     def calculate_zhixing_bull_bear(close, high, low, volume) -> Tuple[float, float]:
@@ -96,13 +128,18 @@ class TechnicalIndicators:
             ema10 = close.ewm(span=10).mean()
             white_line = ema10.ewm(span=10).mean()
             
-            yellow_line = close.rolling(window=60).mean()
+            effective_window = min(60, len(close))
+            yellow_line = close.rolling(window=effective_window).mean()
             
-            return float(white_line.iloc[-1]), float(yellow_line.iloc[-1])
+            white_val = white_line.iloc[-1] if not pd.isna(white_line.iloc[-1]) else close.iloc[-1]
+            yellow_val = yellow_line.iloc[-1] if not pd.isna(yellow_line.iloc[-1]) else close.iloc[-1]
+            
+            return (TechnicalIndicators._format_decimal(white_val), 
+                    TechnicalIndicators._format_decimal(yellow_val))
             
         except Exception as e:
             print(f"知行合一多空线计算错误: {e}")
-            return 50.0, 50.0
+            return TechnicalIndicators._format_decimal(50.0), TechnicalIndicators._format_decimal(50.0)
     
     @classmethod
     def calculate_all_indicators(cls, df):
@@ -138,14 +175,19 @@ class TechnicalIndicators:
             if bbi is not None:
                 df['bbi'] = bbi
             
+            indicator_columns = ['kdj_k', 'kdj_d', 'kdj_j', 'macd_dif', 'macd_dea', 'macd_macd', 'bbi']
+            for col in indicator_columns:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: cls._format_decimal(x) if pd.notna(x) else x)
+            
             if len(df) > 0:
                 long_line, short_line = cls.calculate_zhixing_long_short(close, high, low, volume)
                 bull_line, bear_line = cls.calculate_zhixing_bull_bear(close, high, low, volume)
                 
-                df['zhixing_long_line'] = long_line
-                df['zhixing_short_line'] = short_line
-                df['zhixing_bull_line'] = bull_line
-                df['zhixing_bear_line'] = bear_line
+                df['zhixing_long_line'] = cls._format_decimal(long_line)
+                df['zhixing_short_line'] = cls._format_decimal(short_line)
+                df['zhixing_bull_line'] = cls._format_decimal(bull_line)
+                df['zhixing_bear_line'] = cls._format_decimal(bear_line)
             
             return df
             

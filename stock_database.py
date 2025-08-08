@@ -474,3 +474,18 @@ class StockDatabase:
         stats['unique_stocks'] = unique_stocks
         
         return stats
+    
+    def clear_all_data(self):
+        """清空所有数据库表"""
+        try:
+            tables = ['stock_daily_data', 'sector_daily_data', 'sector_ranking_stats', 'update_log']
+            
+            for table in tables:
+                self.db_schema.execute_query(f"DELETE FROM {table}")
+                print(f"✓ 已清空表: {table}")
+            
+            print("✓ 所有数据已清空")
+            return True
+        except Exception as e:
+            print(f"✗ 清空数据失败: {e}")
+            return False

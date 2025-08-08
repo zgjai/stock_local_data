@@ -21,9 +21,10 @@ def main():
         print("4. 查询板块数据")
         print("5. 查询板块排名统计")
         print("6. 查看数据库统计")
-        print("7. 退出")
+        print("7. 清空所有数据")
+        print("8. 退出")
         
-        choice = input("\n请输入选择 (1-7): ").strip()
+        choice = input("\n请输入选择 (1-8): ").strip()
         
         if choice == '1':
             print("\n开始初始化历史数据...")
@@ -104,6 +105,18 @@ def main():
                 print(f"{key}: {value}")
         
         elif choice == '7':
+            print("\n警告: 此操作将清空所有数据库数据!")
+            confirm = input("确认清空所有数据? (输入 'YES' 确认): ").strip()
+            if confirm == 'YES':
+                success = db.clear_all_data()
+                if success:
+                    print("✓ 数据清空完成")
+                else:
+                    print("✗ 数据清空失败")
+            else:
+                print("操作已取消")
+        
+        elif choice == '8':
             print("退出系统")
             break
         
