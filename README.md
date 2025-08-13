@@ -58,6 +58,10 @@ db.update_sector_constituents(sector_names=['银行', '保险'])  # 更新指定
 # 完整更新板块数据（包含成分股，用于初始化或完整同步）
 db.update_sector_data_with_constituents()
 
+# 从本地JSON文件导入历史数据
+db.import_local_data('/path/to/data/folder')  # 导入文件夹下所有JSON文件
+db.import_local_data('/path/to/data/folder', '000001*.json')  # 导入特定模式的文件
+
 # 查询个股数据
 stock_data = db.query_stock_data('000001', start_date='2024-01-01')
 

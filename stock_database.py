@@ -4,6 +4,8 @@
 
 import pandas as pd
 import json
+import os
+import glob
 from datetime import datetime, timedelta
 import logging
 from database_schema import DatabaseSchema
@@ -597,3 +599,169 @@ class StockDatabase:
         except Exception as e:
             logger.error(f"完整更新板块数据失败: {str(e)}")
             return False
+    
+    def import_local_data(self, data_folder_path, file_pattern="*.json"):
+        """从本地JSON文件导入历史股票数据
+        
+        Args:
+            data_folder_path: 包含JSON文件的文件夹路径
+            file_pattern: 文件匹配模式，默认为"*.json"
+        
+        Returns:
+            bool: 导入是否成功
+        """
+        logger.info(f"开始从本地文件夹导入数据: {data_folder_path}")
+        
+        if not os.path.exists(data_folder_path):
+            logger.error(f"数据文件夹不存在: {data_folder_path}")
+            return False
+        
+        try:
+            json_files = glob.glob(os.path.join(data_folder_path, file_pattern))
+            
+            if not json_files:
+                logger.warning(f"在文件夹 {data_folder_path} 中未找到匹配的JSON文件")
+                return False
+            
+            logger.info(f"找到 {len(json_files)} 个JSON文件")
+            
+            total_imported = 0
+            successful_files = 0
+            
+            for json_file in json_files:
+                try:
+                    filename = os.path.basename(json_file)
+                    stock_code = self._extract_stock_code_from_filename(filename)
+                    
+                    if not stock_code:
+                        logger.warning(f"无法从文件名提取股票代码: {filename}")
+                        continue
+                    
+                    imported_count = self._import_single_json_file(json_file, stock_code)
+                    
+                    if imported_count > 0:
+                        total_imported += imported_count
+                        successful_files += 1
+                        logger.info(f"成功导入文件 {filename}: {imported_count} 条记录")
+                    else:
+                        logger.warning(f"文件 {filename} 导入失败或无数据")
+                        
+                except Exception as e:
+                    logger.error(f"处理文件 {json_file} 时出错: {str(e)}")
+                    continue
+            
+            self._log_update('local_import', 'success' if successful_files > 0 else 'failed', total_imported)
+            
+            logger.info(f"本地数据导入完成: 成功处理 {successful_files} 个文件，共导入 {total_imported} 条记录")
+            return successful_files > 0
+            
+        except Exception as e:
+            logger.error(f"导入本地数据失败: {str(e)}")
+            self._log_update('local_import', 'failed', 0, str(e))
+            return False
+    
+    def _extract_stock_code_from_filename(self, filename):
+        """从文件名提取股票代码
+        
+        Args:
+            filename: 文件名
+            
+        Returns:
+            str: 股票代码，如果提取失败返回None
+        """
+        try:
+            name_without_ext = os.path.splitext(filename)[0]
+            
+            import re
+            match = re.match(r'^(\d{6})', name_without_ext)
+            
+            if match:
+                return match.group(1)
+            
+            match = re.match(r'^(\d{6})', name_without_ext)
+            if match:
+                return match.group(1)
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"提取股票代码失败: {str(e)}")
+            return None
+    
+    def _import_single_json_file(self, json_file_path, stock_code):
+        """导入单个JSON文件的数据
+        
+        Args:
+            json_file_path: JSON文件路径
+            stock_code: 股票代码
+            
+        Returns:
+            int: 导入的记录数
+        """
+        try:
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            if not isinstance(data, dict) or 'data' not in data:
+                logger.error(f"JSON文件格式不正确: {json_file_path}")
+                return 0
+            
+            stock_data = data['data']
+            processed_records = []
+            
+            for date_str, day_data in stock_data.items():
+                try:
+                    formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                    
+                    record = (
+                        formatted_date,
+                        stock_code,
+                        day_data.get('stock_name', ''),  # 如果JSON中没有股票名称，使用空字符串
+                        day_data.get('total_market_cap'),
+                        day_data.get('circulating_market_cap'),
+                        day_data.get('open'),
+                        day_data.get('high'),
+                        day_data.get('low'),
+                        day_data.get('close'),
+                        day_data.get('volume'),
+                        day_data.get('kdj_k'),
+                        day_data.get('kdj_d'),
+                        day_data.get('kdj_j'),
+                        day_data.get('macd_dif'),
+                        day_data.get('macd_dea'),
+                        day_data.get('macd'),
+                        day_data.get('bbi'),
+                        day_data.get('zhixing_long'),
+                        day_data.get('zhixing_short'),
+                        day_data.get('zhixing_bull_line'),
+                        day_data.get('zhixing_bear_line'),
+                        None,  # industry_sector - 可以后续更新
+                        None   # concept_sectors - 可以后续更新
+                    )
+                    
+                    processed_records.append(record)
+                    
+                except Exception as e:
+                    logger.error(f"处理日期 {date_str} 的数据时出错: {str(e)}")
+                    continue
+            
+            if processed_records:
+                insert_query = '''
+                    INSERT OR REPLACE INTO stock_daily_data 
+                    (date, stock_code, stock_name, total_market_cap, circulating_market_cap,
+                     open_price, high_price, low_price, close_price, volume,
+                     kdj_k, kdj_d, kdj_j, macd_dif, macd_dea, macd_macd, bbi,
+                     zhixing_long_line, zhixing_short_line, zhixing_bull_line, zhixing_bear_line,
+                     industry_sector, concept_sectors)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                '''
+                
+                self.db_schema.execute_insert(insert_query, processed_records)
+                
+                return len(processed_records)
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"导入文件 {json_file_path} 失败: {str(e)}")
+            return 0
