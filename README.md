@@ -47,8 +47,16 @@ db = StockDatabase()
 # 初始化历史数据（过去一年）
 db.initialize_historical_data()
 
-# 日常数据更新
+# 日常数据更新（不包含板块成分股）
 db.daily_update()
+
+# 独立更新板块成分股数据
+db.update_sector_constituents()  # 更新所有板块成分股
+db.update_sector_constituents(sector_type='行业')  # 只更新行业板块成分股
+db.update_sector_constituents(sector_names=['银行', '保险'])  # 更新指定板块成分股
+
+# 完整更新板块数据（包含成分股，用于初始化或完整同步）
+db.update_sector_data_with_constituents()
 
 # 查询个股数据
 stock_data = db.query_stock_data('000001', start_date='2024-01-01')

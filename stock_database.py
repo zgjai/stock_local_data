@@ -110,21 +110,21 @@ class StockDatabase:
             return False
     
     def _update_daily_sector_data(self):
-        """更新日常板块数据"""
+        """更新日常板块数据（不包含成分股）"""
         try:
             success_count = 0
             
             industry_data = self.data_fetcher.get_industry_sector_data()
             if industry_data is not None:
-                industry_count = self._process_and_store_sector_data(industry_data, '行业')
+                industry_count = self._process_and_store_sector_data(industry_data, '行业', fetch_constituents=False)
                 success_count += industry_count
             
             concept_data = self.data_fetcher.get_concept_sector_data()
             if concept_data is not None:
-                concept_count = self._process_and_store_sector_data(concept_data, '概念')
+                concept_count = self._process_and_store_sector_data(concept_data, '概念', fetch_constituents=False)
                 success_count += concept_count
             
-            logger.info(f"更新了 {success_count} 个板块的数据")
+            logger.info(f"更新了 {success_count} 个板块的数据（不包含成分股）")
             return success_count > 0
             
         except Exception as e:
@@ -225,7 +225,7 @@ class StockDatabase:
             logger.error(f"处理和存储实时数据失败: {str(e)}")
             return 0
     
-    def _process_and_store_sector_data(self, data, sector_type):
+    def _process_and_store_sector_data(self, data, sector_type, fetch_constituents=False):
         """处理和存储板块数据"""
         if data is None or data.empty:
             return 0
@@ -238,7 +238,7 @@ class StockDatabase:
                 sector_code = row.get('板块代码', '')
                 constituents = []
                 
-                if sector_code:
+                if fetch_constituents and sector_code:
                     if sector_type == '行业':
                         const_data = self.data_fetcher.get_industry_constituents(sector_code)
                     else:
@@ -253,7 +253,7 @@ class StockDatabase:
                     row.get('板块名称', ''),
                     row.get('排名', 0),
                     row.get('涨跌幅', 0),
-                    json.dumps(constituents)
+                    json.dumps(constituents) if constituents else None
                 )
                 
                 processed_records.append(record)
@@ -488,4 +488,112 @@ class StockDatabase:
             return True
         except Exception as e:
             print(f"✗ 清空数据失败: {e}")
+            return False
+    
+    def update_sector_constituents(self, sector_type=None, sector_names=None):
+        """独立更新板块成分股数据
+        
+        Args:
+            sector_type: '行业' 或 '概念'，如果为None则更新所有类型
+            sector_names: 指定板块名称列表，如果为None则更新所有板块
+        """
+        logger.info("开始更新板块成分股数据...")
+        
+        try:
+            query = "SELECT DISTINCT sector_type, sector_name FROM sector_daily_data WHERE 1=1"
+            params = []
+            
+            if sector_type:
+                query += " AND sector_type = ?"
+                params.append(sector_type)
+            
+            if sector_names:
+                placeholders = ','.join(['?' for _ in sector_names])
+                query += f" AND sector_name IN ({placeholders})"
+                params.extend(sector_names)
+            
+            sectors = self.db_schema.execute_query(query, params)
+            
+            updated_count = 0
+            for sector_type_db, sector_name in sectors:
+                success = self._update_single_sector_constituents(sector_type_db, sector_name)
+                if success:
+                    updated_count += 1
+            
+            logger.info(f"成功更新了 {updated_count} 个板块的成分股数据")
+            return updated_count > 0
+            
+        except Exception as e:
+            logger.error(f"更新板块成分股数据失败: {str(e)}")
+            return False
+    
+    def _update_single_sector_constituents(self, sector_type, sector_name):
+        """更新单个板块的成分股数据"""
+        try:
+            if sector_type == '行业':
+                sector_data = self.data_fetcher.get_industry_sector_data()
+            else:
+                sector_data = self.data_fetcher.get_concept_sector_data()
+            
+            if sector_data is None:
+                return False
+            
+            sector_row = sector_data[sector_data['板块名称'] == sector_name]
+            if sector_row.empty:
+                logger.warning(f"未找到板块: {sector_name}")
+                return False
+            
+            sector_code = sector_row.iloc[0].get('板块代码', '')
+            if not sector_code:
+                return False
+            
+            if sector_type == '行业':
+                const_data = self.data_fetcher.get_industry_constituents(sector_code)
+            else:
+                const_data = self.data_fetcher.get_concept_constituents(sector_code)
+            
+            if const_data is None or const_data.empty:
+                return False
+            
+            constituents = const_data['代码'].tolist()
+            
+            update_query = '''
+                UPDATE sector_daily_data 
+                SET constituent_stocks = ?
+                WHERE sector_type = ? AND sector_name = ?
+            '''
+            
+            self.db_schema.execute_insert(update_query, (
+                json.dumps(constituents), sector_type, sector_name
+            ))
+            
+            logger.info(f"更新板块 {sector_name} 的成分股数据，包含 {len(constituents)} 只股票")
+            return True
+            
+        except Exception as e:
+            logger.error(f"更新板块 {sector_name} 成分股数据失败: {str(e)}")
+            return False
+    
+    def update_sector_data_with_constituents(self):
+        """更新板块数据并包含成分股（完整更新）"""
+        logger.info("开始完整更新板块数据（包含成分股）...")
+        
+        try:
+            success_count = 0
+            
+            industry_data = self.data_fetcher.get_industry_sector_data()
+            if industry_data is not None:
+                industry_count = self._process_and_store_sector_data(industry_data, '行业', fetch_constituents=True)
+                success_count += industry_count
+            
+            concept_data = self.data_fetcher.get_concept_sector_data()
+            if concept_data is not None:
+                concept_count = self._process_and_store_sector_data(concept_data, '概念', fetch_constituents=True)
+                success_count += concept_count
+            
+            logger.info(f"完整更新了 {success_count} 个板块的数据（包含成分股）")
+            return success_count > 0
+            
+        except Exception as e:
+            logger.error(f"完整更新板块数据失败: {str(e)}")
             return False
